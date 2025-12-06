@@ -19,7 +19,7 @@ class SuperPharm(MultiPageWeb):
         super().__init__(
             chain=DumpFolderNames.SUPER_PHARM,
             chain_id="7290172900007",
-            url="http://prices.super-pharm.co.il/",
+            url="https://prices.super-pharm.co.il/",
             folder_name=folder_name,
             total_page_xpath='//*[@class="mvc-grid-pager"]/button[last()]/@data-page',
             total_pages_pattern=r"(\d+)$",
