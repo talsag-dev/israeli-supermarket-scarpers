@@ -17,4 +17,4 @@ status/
 .env
 settings.local.json
 frotend/build/*
-frotend/node_modules/*
+frotend/node_modules
