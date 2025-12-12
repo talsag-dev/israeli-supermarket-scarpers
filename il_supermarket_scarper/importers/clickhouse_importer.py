@@ -225,6 +225,59 @@ class ClickHouseImporter:
             stats[table] = r.result_rows[0][0]
         return stats
 
+    def get_available_cities(self) -> List[str]:
+        """Get list of unique cities with stores."""
+        try:
+            result = self.client.query(f"""
+                SELECT DISTINCT City 
+                FROM {self.database}.stores 
+                WHERE City != '' 
+                ORDER BY City
+            """)
+            return [row[0] for row in result.result_rows]
+        except Exception as e:
+            Logger.error(f"Failed to get available cities: {e}")
+            return []
+
+    def get_available_chains(self) -> List[Dict[str, Any]]:
+        """Get list of chains with store counts."""
+        try:
+            result = self.client.query(f"""
+                SELECT ChainId, COUNT(DISTINCT StoreId) as store_count
+                FROM {self.database}.stores
+                GROUP BY ChainId
+                ORDER BY store_count DESC
+            """)
+            return [{"chain_id": row[0], "store_count": row[1]} for row in result.result_rows]
+        except Exception as e:
+            Logger.error(f"Failed to get available chains: {e}")
+            return []
+
+    def get_popular_items(self, limit: int = 100) -> List[str]:
+        """Get most common item names."""
+        try:
+            result = self.client.query(f"""
+                SELECT ItemName, COUNT(*) as cnt
+                FROM {self.database}.prices
+                WHERE ItemName != ''
+                GROUP BY ItemName
+                ORDER BY cnt DESC
+                LIMIT {limit}
+            """)
+            return [row[0] for row in result.result_rows]
+        except Exception as e:
+            Logger.error(f"Failed to get popular items: {e}")
+            return []
+
+    def get_metadata_summary(self) -> Dict[str, Any]:
+        """Get comprehensive metadata summary for LLM context."""
+        return {
+            "cities": self.get_available_cities(),
+            "chains": self.get_available_chains(),
+            "popular_items": self.get_popular_items(50),  # Limit to top 50 for context size
+            "stats": self.get_stats()
+        }
+
     def close(self):
         """Close connection."""
         if self.client:

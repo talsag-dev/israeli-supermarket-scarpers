@@ -40,6 +40,20 @@ services:
     depends_on:
       - clickhouse
 
+  frontend:
+    build:
+      context: ./frontend
+    container_name: supermarket-frontend
+    ports:
+      - "3000:80"
+    environment:
+      - VITE_API_URL=http://localhost:8080
+    networks:
+      - supermarket-network
+    restart: unless-stopped
+    depends_on:
+      - scraper
+
 volumes:
   clickhouse_data:
     driver: local

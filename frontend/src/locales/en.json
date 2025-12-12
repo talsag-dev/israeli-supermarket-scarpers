@@ -1,0 +1,40 @@
+{
+  "app": {
+    "title": "MarketWise",
+    "subtitle": "Your AI Companion for Smart Shopping Insights"
+  },
+  "query": {
+    "header": "Ask the Data Expert",
+    "description": "Uncover hidden trends, compare prices, and explore store data instantly.",
+    "newConversation": "New Conversation",
+    "emptyStateTitle": "Start a Conversation",
+    "emptyStateHint": "Try asking: \"Show me the cheapest milk products\"",
+    "placeholder": "Ask about products, prices, or stores... e.g., 'Show me the cheapest milk products'",
+    "askButton": "Ask",
+    "processing": "Processing...",
+    "processingMessage": "Processing your query...",
+    "error": "Error:",
+    "noResults": "No results found for this query.",
+    "resultsFound": "Found {{count}} result",
+    "resultsFound_plural": "Found {{count}} results"
+  },
+  "suggestions": {
+    "cheapestMilk": "Where can I find the cheapest milk?",
+    "pastaPrices": "Compare pasta prices in Tel Aviv",
+    "tlvStores": "Show me all stores in Tel Aviv"
+  },
+  "columns": {
+    "Address": "Address",
+    "City": "City",
+    "StoreName": "Store Name",
+    "UnitQty": "Unit Quantity",
+    "Quantity": "Quantity",
+    "ManufacturerName": "Manufacturer",
+    "ItemPrice": "Price",
+    "ItemName": "Item Name",
+    "ItemCode": "Item Code",
+    "ZipCode": "Zip Code",
+    "LastUpdate": "Last Updated",
+    "StoreId": "Store ID"
+  }
+}

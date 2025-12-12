@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from il_supermarket_scarper import ScarpingTask
 from il_supermarket_scarper.importers.import_runner import ImportRunner
@@ -22,6 +23,15 @@ async def lifespan(app: FastAPI):
     Logger.info("Shutting down service...")
 
 app = FastAPI(lifespan=lifespan)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Lock to prevent multiple concurrent runs
 scrape_lock = threading.Lock()
@@ -67,27 +77,52 @@ def health_check():
 
 class QueryRequest(BaseModel):
     question: str
+    conversation_history: list = []  # List of {role: "user"|"assistant", content: str}
 
 @app.post("/query")
-async def query_data(request: QueryRequest):
+async def query_data(request: QueryRequest, debug: bool = False):
     """
     Convert natural language question to SQL and execute it against ClickHouse.
+    Uses RAG to provide database metadata context to the LLM.
+    Supports conversation history for contextual follow-up questions.
+    
+    Args:
+        request: Query request with user question and optional conversation history
+        debug: If True, returns metadata context used for generation
     """
     try:
-        # 1. Generate SQL
-        sql_query = llm_engine.generate_sql(request.question)
+        # 1. Retrieve database metadata for RAG context
+        Logger.info("Retrieving database metadata for RAG context...")
+        metadata = clickhouse_client.get_metadata_summary()
+        
+        # 2. Generate SQL with metadata context and conversation history
+        sql_query = llm_engine.generate_sql(
+            request.question, 
+            metadata=metadata,
+            conversation_history=request.conversation_history
+        )
         Logger.info(f"Generated SQL: {sql_query}")
 
-        # 2. Execute SQL
-        # We need a method to run raw queries in ClickHouseImporter
+        # 3. Execute SQL
         result = clickhouse_client.client.query(sql_query)
 
-        return {
+        response = {
             "question": request.question,
             "sql": sql_query,
             "data": result.result_rows,
             "columns": result.column_names
         }
+        
+        # Include metadata in debug mode
+        if debug:
+            response["metadata"] = {
+                "cities_count": len(metadata.get("cities", [])),
+                "chains_count": len(metadata.get("chains", [])),
+                "sample_cities": metadata.get("cities", [])[:10],
+                "stats": metadata.get("stats", {})
+            }
+        
+        return response
     except Exception as e:
         Logger.error(f"Query processing error: {e}")
         return {"error": str(e)}

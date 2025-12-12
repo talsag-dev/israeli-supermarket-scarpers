@@ -1,0 +1,40 @@
+{
+  "app": {
+    "title": "MarketWise",
+    "subtitle": "העוזר האישי שלך לקניות חכמות"
+  },
+  "query": {
+    "header": "שאל את המומחה",
+    "description": "גלה מגמות נסתרות, השווה מחירים וחקור את נתוני החנויות באופן מיידי.",
+    "newConversation": "שיחה חדשה",
+    "emptyStateTitle": "התחל שיחה",
+    "emptyStateHint": "נסה לשאול: \"הראה לי את מוצרי החלב הזולים ביותר\"",
+    "placeholder": "שאל על מוצרים, מחירים או חנויות... לדוגמה: 'הראה לי את מוצרי החלב הזולים ביותר'",
+    "askButton": "שאל",
+    "processing": "מעבד...",
+    "processingMessage": "מעבד את השאילתה שלך...",
+    "error": "שגיאה:",
+    "noResults": "לא נמצאו תוצאות לשאילתה זו.",
+    "resultsFound": "נמצאה תוצאה {{count}}",
+    "resultsFound_plural": "נמצאו {{count}} תוצאות"
+  },
+  "suggestions": {
+    "cheapestMilk": "איפה אפשר למצוא את החלב הכי זול?",
+    "pastaPrices": "השווה מחירי פסטה בתל אביב",
+    "tlvStores": "הראה לי את כל החנויות בתל אביב"
+  },
+  "columns": {
+    "Address": "כתובת",
+    "City": "עיר",
+    "StoreName": "שם חנות",
+    "UnitQty": "כמות ביחידה",
+    "Quantity": "כמות",
+    "ManufacturerName": "יצרן",
+    "ItemPrice": "מחיר",
+    "ItemName": "שם פריט",
+    "ItemCode": "קוד פריט",
+    "ZipCode": "מיקוד",
+    "LastUpdate": "עדכון אחרון",
+    "StoreId": "קוד חנות"
+  }
+}
