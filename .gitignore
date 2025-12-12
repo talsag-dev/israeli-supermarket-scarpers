@@ -14,3 +14,5 @@ test_dump
 status/
 .cache/
 .env.*
+.env
+settings.local.json

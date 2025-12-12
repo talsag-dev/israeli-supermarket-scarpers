@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-CLI tool to import scraped supermarket data into MongoDB.
+CLI tool to import scraped supermarket data into ClickHouse.
 
 Usage:
     python import_data.py --provider SuperPharm
@@ -8,20 +8,19 @@ Usage:
     python import_data.py --implemented  # Only import fully implemented parsers
     python import_data.py --list-parsers
     python import_data.py --stats
-    python import_data.py --create-indexes
 """
 
 import argparse
 import sys
 
-from il_supermarket_scarper.importers import ImportRunner, MongoImporter
+from il_supermarket_scarper.importers import ImportRunner
 from il_supermarket_scarper.parsers_factory import ParserFactory
 
 
 def main():
     """Main CLI entry point."""
     parser = argparse.ArgumentParser(
-        description='Import supermarket XML data to MongoDB',
+        description='Import supermarket XML data to ClickHouse',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
@@ -39,9 +38,6 @@ Examples:
 
   # Show database statistics
   python import_data.py --stats
-
-  # Create MongoDB indexes
-  python import_data.py --create-indexes
 
   # Clear existing data before import
   python import_data.py --provider SuperPharm --clear
@@ -72,18 +68,13 @@ Examples:
     parser.add_argument(
         '--database',
         default='supermarket_data',
-        help='MongoDB database name (default: supermarket_data)',
+        help='ClickHouse database name (default: supermarket_data)',
         type=str
     )
     parser.add_argument(
         '--clear',
         action='store_true',
         help='Clear existing data for provider before importing'
-    )
-    parser.add_argument(
-        '--create-indexes',
-        action='store_true',
-        help='Create MongoDB indexes for efficient querying'
     )
     parser.add_argument(
         '--list-parsers',
@@ -95,6 +86,8 @@ Examples:
         action='store_true',
         help='Show database statistics (document counts)'
     )
+
+
 
     args = parser.parse_args()
 
@@ -114,29 +107,21 @@ Examples:
     # Stats command
     if args.stats:
         try:
-            importer = MongoImporter(args.database)
-            stats = importer.get_stats()
+            # Replaced MongoImporter with ImportRunner for stats
+            runner = ImportRunner(dumps_folder=args.dumps, database_name=args.database)
+            stats = runner.get_stats()
             print("\n=== Database Statistics ===")
             print(f"Database: {args.database}")
-            print(f"Stores:     {stats['stores']:,}")
-            print(f"Prices:     {stats['prices']:,}")
-            print(f"Promotions: {stats['promotions']:,}")
-            importer.close()
+            print(f"Stores:     {stats.get('stores', 0):,}")
+            print(f"Prices:     {stats.get('prices', 0):,}")
+            print(f"Promotions: {stats.get('promotions', 0):,}")
+            runner.close()
             return 0
         except Exception as e:
             print(f"Error getting stats: {e}", file=sys.stderr)
             return 1
 
-    # Create indexes command
-    if args.create_indexes:
-        try:
-            importer = MongoImporter(args.database)
-            importer.create_indexes()
-            importer.close()
-            return 0
-        except Exception as e:
-            print(f"Error creating indexes: {e}", file=sys.stderr)
-            return 1
+
 
     # Import commands
     try:

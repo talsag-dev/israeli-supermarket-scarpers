@@ -2,11 +2,9 @@
 import os
 from pathlib import Path
 from typing import Dict, List, Optional
-
 from il_supermarket_scarper.parsers_factory import ParserFactory
 from il_supermarket_scarper.utils.loop import execute_in_parallel
 from il_supermarket_scarper.utils.logger import Logger
-from .mongo_importer import MongoImporter
 
 
 class ImportRunner:
@@ -17,12 +15,21 @@ class ImportRunner:
 
         Args:
             dumps_folder: Path to dumps folder containing XML files
-            database_name: MongoDB database name
+            database_name: Database name
             max_workers: Maximum number of parallel workers for parsing XML files
         """
         self.dumps_folder = dumps_folder
-        self.importer = MongoImporter(database_name)
-        self.max_workers = max_workers
+        
+        # Determine max_workers from env if not explicit, else use default/arg
+        env_mw = os.getenv('MAX_WORKERS')
+        if env_mw:
+            self.max_workers = int(env_mw)
+        else:
+            self.max_workers = max_workers
+
+        from .clickhouse_importer import ClickHouseImporter
+        self.importer = ClickHouseImporter(database_name)
+        Logger.info("Using ClickHouse Importer")
 
     def _parse_file(self, xml_path: str, parser) -> tuple:
         """Parse a single XML file.
@@ -55,12 +62,13 @@ class ImportRunner:
             # Return error info so it can be handled in main thread
             return 'error', str(e)
 
-    def import_provider(self, provider_name: str, clear_existing: bool = False) -> Dict[str, int]:
+    def import_provider(self, provider_name: str, clear_existing: bool = False, batch_size: int = 50) -> Dict[str, int]:
         """Import all data for a specific provider.
 
         Args:
             provider_name: Provider name (e.g., "SuperPharm")
             clear_existing: If True, clear existing data for this provider first
+            batch_size: Number of files to process in each batch
 
         Returns:
             Dictionary with counts of imported stores, prices, promotions
@@ -97,53 +105,79 @@ class ImportRunner:
             Logger.warning(f"No XML files found in {provider_folder}")
             return {'stores': 0, 'prices': 0, 'promotions': 0}
 
-        # Parse files in parallel using existing execute_in_parallel utility
+        total_files = len(xml_files)
+        Logger.info(f"Found {total_files} files to import")
+
         stores_count = 0
         prices_count = 0
         promotions_count = 0
 
-        # Create list of (xml_path, parser) tuples for parallel execution
-        parse_args = [(xml_path, parser) for xml_path in xml_files]
+        # Process in batches
+        for i in range(0, total_files, batch_size):
+            batch_files = xml_files[i : i + batch_size]
+            Logger.info(f"Processing batch {i//batch_size + 1}/{(total_files + batch_size - 1)//batch_size} ({len(batch_files)} files)...")
 
-        # Parse all files in parallel with automatic logging
-        results = execute_in_parallel(
-            lambda args: self._parse_file(*args),
-            parse_args,
-            max_threads=self.max_workers
-        )
+            # Create list of (xml_path, parser) tuples for parallel execution
+            parse_args = [(xml_path, parser) for xml_path in batch_files]
 
-        # Process results
-        for xml_path, (file_type, data) in zip(xml_files, results):
-            xml_file = os.path.basename(xml_path)
+            # Parse batch files in parallel
+            results = execute_in_parallel(
+                lambda args: self._parse_file(*args),
+                parse_args,
+                max_threads=self.max_workers
+            )
 
+            batch_stores = []
+            batch_prices = []
+            batch_promotions = []
+
+            # Process results for this batch
+            for xml_path, result_tuple in zip(batch_files, results):
+                # execute_in_parallel returns results in order
+                file_type, data = result_tuple
+                xml_file = os.path.basename(xml_path)
+
+                try:
+                    if file_type == 'stores' and data:
+                        batch_stores.extend(data)
+                        Logger.info(f"✓ {xml_file}: parsed {len(data)} stores")
+
+                    elif file_type == 'prices' and data:
+                        batch_prices.extend(data)
+                        Logger.info(f"✓ {xml_file}: parsed {len(data)} prices")
+
+                    elif file_type == 'promotions' and data:
+                        batch_promotions.extend(data)
+                        Logger.info(f"✓ {xml_file}: parsed {len(data)} promotions")
+
+                    elif file_type == 'unknown':
+                        Logger.warning(f"{xml_file}: unknown file type")
+
+                    elif file_type == 'error':
+                        Logger.error(f"{xml_file}: {data}")
+
+                except Exception as e:
+                    Logger.error(f"{xml_file}: Error processing result - {e}")
+
+            # Bulk import for the batch
             try:
-                if file_type == 'stores' and data:
-                    count = self.importer.import_stores(data)
+                if batch_stores:
+                    count = self.importer.import_stores(batch_stores)
                     stores_count += count
-                    Logger.info(f"✓ {xml_file}: {count} stores")
-
-                elif file_type == 'prices' and data:
-                    count = self.importer.import_prices(data)
+                    Logger.info(f"  -> Imported {count} stores from batch")
+                
+                if batch_prices:
+                    count = self.importer.import_prices(batch_prices)
                     prices_count += count
-                    Logger.info(f"✓ {xml_file}: {count} prices")
-
-                elif file_type == 'promotions' and data:
-                    count = self.importer.import_promotions(data)
+                    Logger.info(f"  -> Imported {count} prices from batch")
+                
+                if batch_promotions:
+                    count = self.importer.import_promotions(batch_promotions)
                     promotions_count += count
-                    Logger.info(f"✓ {xml_file}: {count} promotions")
-
-                elif file_type == 'unknown':
-                    Logger.warning(f"{xml_file}: unknown file type")
-
-                elif file_type == 'error':
-                    Logger.error(f"{xml_file}: {data}")  # data contains error message
-
-            except NotImplementedError as e:
-                Logger.error(f"{xml_file}: {e}")
-                raise
+                    Logger.info(f"  -> Imported {count} promotions from batch")
+            
             except Exception as e:
-                Logger.error(f"{xml_file}: Error - {e}")
-                # Continue with other files
+                 Logger.error(f"Error importing batch: {e}")
 
         result = {
             'stores': stores_count,
@@ -158,16 +192,21 @@ class ImportRunner:
 
         return result
 
-    def import_all(self, implemented_only: bool = False) -> Dict[str, Dict[str, int]]:
+    def import_all(self, implemented_only: bool = False, fast_mode: bool = False) -> Dict[str, Dict[str, int]]:
         """Import data from all providers.
 
         Args:
             implemented_only: If True, only import fully implemented parsers
+            fast_mode: If True, drop indexes before import and recreate after (faster but risky)
 
         Returns:
             Dictionary mapping provider names to their import counts
         """
         results = {}
+
+        if fast_mode:
+            Logger.info("FAST MODE: Dropping indexes to speed up import...")
+            self.importer.drop_indexes()
 
         if implemented_only:
             providers = ParserFactory.get_implemented_parsers()
@@ -185,6 +224,23 @@ class ImportRunner:
             except Exception as e:
                 Logger.error(f"Failed to import {provider}: {e}")
                 continue
+
+        Logger.info("=== All Imports Completed ===")
+        Logger.info("Summary:")
+        total_stores = 0
+        total_prices = 0
+        total_promotions = 0
+        
+        for provider, res in results.items():
+            s = res.get('stores', 0)
+            p = res.get('prices', 0)
+            pro = res.get('promotions', 0)
+            total_stores += s
+            total_prices += p
+            total_promotions += pro
+            Logger.info(f"- {provider}: {s} stores, {p} prices, {pro} promos")
+            
+        Logger.info(f"TOTAL: {total_stores} stores, {total_prices} prices, {total_promotions} promos")
 
         return results
 
@@ -204,10 +260,6 @@ class ImportRunner:
                 providers.append(item)
 
         return providers
-
-    def create_indexes(self):
-        """Create MongoDB indexes."""
-        self.importer.create_indexes()
 
     def get_stats(self) -> Dict[str, int]:
         """Get database statistics.

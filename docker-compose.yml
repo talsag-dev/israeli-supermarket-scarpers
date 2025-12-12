@@ -1,33 +1,32 @@
-version: '3.8'
-
 services:
-  mongodb:
-    image: mongo:7.0
-    container_name: supermarket-mongo
+  clickhouse:
+    image: clickhouse/clickhouse-server:23.8
+    container_name: supermarket-clickhouse
     ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: supermarket123
+      - "8123:8123"
+      - "9001:9000"
     volumes:
-      - mongo_data:/data/db
+      - clickhouse_data:/var/lib/clickhouse
     networks:
       - supermarket-network
     restart: unless-stopped
-    healthcheck:
-      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
 
   scraper:
     build:
       context: .
       target: prod
     container_name: supermarket-scraper
+    command: uvicorn service:app --host 0.0.0.0 --port 8080
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
     environment:
-      # MongoDB connection with authentication
-      MONGO_URL: mongodb://admin:supermarket123@mongodb:27017/
+      - CLICKHOUSE_HOST=clickhouse
       # Scraper configuration - if not set, scrapes ALL supermarkets
       # ENABLED_SCRAPERS: "BAREKET,YAYNO_BITAN,SHUFERSAL"
       # LIMIT: 10  # Uncomment to limit files per scraper
@@ -35,15 +34,14 @@ services:
       # ENABLED_FILE_TYPES: "STORE_FILE,PRICE_FILE"
     volumes:
       - ./dumps:/usr/src/app/dumps
-    depends_on:
-      mongodb:
-        condition: service_healthy
     networks:
       - supermarket-network
     restart: unless-stopped
+    depends_on:
+      - clickhouse
 
 volumes:
-  mongo_data:
+  clickhouse_data:
     driver: local
 
 networks:
